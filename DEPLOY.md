@@ -4,6 +4,8 @@ The website runs on **Cloudflare Workers** with **D1** (database) and **R2** (fi
 
 Requirements: a free Cloudflare account (R2 needs a payment method on file, but the free allowance is generous), Node 22.13+, and pnpm.
 
+This configuration uses shared demo credentials. Read the [authentication limitations](README.md#authentication-limitations) and [privacy requirements](README.md#privacy--responsible-use) before using real operator or vehicle data.
+
 ## 1. One-time setup
 
 ~~~sh
