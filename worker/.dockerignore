@@ -1,0 +1,6 @@
+.env*
+__pycache__
+*.pyc
+backend/main.py
+backend/requirements.txt
+backend/README.md

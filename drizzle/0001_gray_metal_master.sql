@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `upload_deleted_at` text;

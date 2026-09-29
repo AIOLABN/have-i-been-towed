@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local development (never commit .dev.vars).
+# Comma-separated operator emails. Only these can sign in.
+OPERATOR_EMAILS=operator@example.com
+# Shared operator password (8+ characters).
+OPERATOR_PASSWORD=change-me-locally
+# Long random string used to sign session cookies (16+ characters).
+SESSION_SECRET=use-a-long-random-local-value
+# Optional salt for hashed per-IP rate limits.
+LOOKUP_SALT=use-a-local-random-value

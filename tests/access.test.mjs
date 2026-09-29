@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {isOperator,checkOrigin,ownsResource,validLease} from '../lib/access.mjs';
+test('operator approval is an explicit server allowlist',()=>{assert.equal(isOperator('a@test.com','a@test.com'),true);assert.equal(isOperator('stranger@test.com','a@test.com'),false);assert.equal(isOperator(null,'a@test.com'),false);assert.equal(isOperator('a@test.com',''),false)});
+test('rejects foreign origins and cross-owner resource access',()=>{assert.equal(checkOrigin(new Request('https://tow.test/api/jobs',{headers:{origin:'https://evil.test'}})),false);assert.equal(ownsResource('one',{owner:'two'}),false);assert.equal(ownsResource('one',{owner:'one'}),true)});
+test('stale or expired worker leases cannot finalize jobs',()=>{const job={owner:'one',status:'analyzing',lease_id:'new',lease_until:200};assert.equal(validLease(job,'one','new',100),true);assert.equal(validLease(job,'one','old',100),false);assert.equal(validLease(job,'two','new',100),false);assert.equal(validLease(job,'one','new',201),false);assert.equal(validLease({...job,status:'completed'},'one','new',100),false)});

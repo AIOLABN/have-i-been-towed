@@ -1,215 +1,126 @@
-# Have I Been Towed? — TowTrace AI
+# HaveIBeenTowed
 
-A hackathon-ready tow detection demo that combines a **FastAPI backend**, **computer vision / OCR pipeline**, **SQLite storage**, and a lightweight web interface. Upload tow-truck footage, let the CV pipeline identify a likely towed vehicle's plate, save the detection, and search that plate from the public-facing lookup page.
+**BAY HACKS — AI Track Winner**
 
-<p align="center">
-  <img src="docs/images/tow-demo-middle.jpg" alt="TowTrace sample tow footage" width="760">
-</p>
+A computer-vision prototype that helps drivers find reviewed towing records using their license plate and registration state.
 
-## What it does
+![Sample camera evidence](public/media/tow-frame.jpg)
 
-1. A tow-truck video is uploaded from the **Detection** page.
-2. The backend sends the video through the CV pipeline.
-3. The pipeline detects plates, reads them with OCR, tracks them across frames, estimates tow-truck/camera motion, and uses repeated votes to reduce bad one-frame reads.
-4. Accepted detections are stored in SQLite with confidence, vote count, and a snapshot.
-5. The **Evaluation** page shows accepted detections.
-6. The homepage lets a user search a plate and see its latest tow record.
+[Quick start](#run-locally) · [How it works](#how-the-signal-travels) · [Worker setup](worker/README.md) · [Deployment](DEPLOY.md)
 
-## Demo
+Connected tow-event evidence and vehicle lookup prototype. Camera footage becomes a plate candidate, an operator checks the frame, and only a reviewed record can appear in a public lookup.
 
-### Sample tow footage
+## Run locally
 
-| Start | Mid-video | Later frame |
-| --- | --- | --- |
-| ![Start of tow demo](docs/images/tow-demo-start.jpg) | ![Middle of tow demo](docs/images/tow-demo-middle.jpg) | ![Later tow demo frame](docs/images/tow-demo-end.jpg) |
+Requires Node 22.13+ for the web application and Python 3.11+ for the video worker.
 
-### Accepted plate snapshot
+~~~sh
+pnpm install
+pnpm dev
+~~~
 
-<p align="center">
-  <img src="docs/images/sample-detection.jpg" alt="Accepted TowTrace plate detection" width="420">
-</p>
+Open the URL printed by Vinext. To serve the production bundle locally:
 
-## Tech stack
+~~~sh
+pnpm build
+pnpm start
+~~~
 
-- **Frontend:** HTML, CSS, vanilla JavaScript
-- **API:** FastAPI + Uvicorn
-- **Database:** SQLite + SQLModel
-- **Computer vision:** OpenCV + FastALPR / YOLO-based plate detection
-- **OCR:** FastALPR OCR output with multi-frame voting
-- **Video analysis:** plate tracking + background optical-flow motion estimation
+Before first run, copy `.dev.vars.example` to `.dev.vars`, set your operator email and password, then apply the local migrations with `pnpm db:migrate:local`. The local D1/R2 preview state is disposable and lives under `.wrangler/`. Production uses the D1 database and R2 bucket declared in `wrangler.jsonc`; see [`DEPLOY.md`](DEPLOY.md).
 
-## Repository structure
+## What works
 
-```text
-HaveIBeenTowed/
-├── frontend/
-│   ├── index.html             # Plate lookup page
-│   ├── detection.html         # Upload video for CV analysis
-│   └── evaluation.html        # Review accepted detections
-│
-├── backend/
-│   ├── main.py                # FastAPI app + database/API routes
-│   ├── requirements.txt       # Python dependencies
-│   └── cv/
-│       └── tow_cv_only.py     # CV/OCR/tow-detection pipeline
-│
-├── data/
-│   ├── towtrace.db            # Demo SQLite database
-│   ├── snapshots/             # Accepted detection images
-│   └── uploads/               # Temporary uploads (gitignored)
-│
-├── demo/
-│   └── tow_test.mp4           # Included test video
-│
-├── docs/images/               # Images used by this README
-├── start_towtrace.py          # Cross-platform launcher
-├── start_towtrace.bat         # Windows one-click launcher
-├── start_towtrace.ps1         # PowerShell launcher
-└── test_cv.bat                # Windows CV-only test
-```
+**Public lookup**, at `/`, accepts an exact license plate and registration state. It returns only a published match. A missing result is intentionally inconclusive: this prototype is not connected to every towing company, city, or police database.
 
-## Quick start — Windows
+**Detection studio**, at `/detection`, is the operator workspace. It includes the recorded sample journey, a private upload queue, worker connection instructions, and processing status. Uploads are limited to five waiting jobs and 20 MB per video.
 
-### 1. Clone the repository
+**The evidence room**, at `/evaluation`, keeps the sample record separate from an operator's live records. An operator can inspect the frame, verify the plate and state, confirm the supplied destination, then publish or reject the candidate. Pending evidence is not returned by public lookup.
 
-```powershell
-git clone <your-repository-url>
-cd HaveIBeenTowed
-```
+The API is served by the same application. `GET /api/status` reports database readiness and, for an approved operator, whether that operator's worker has sent a recent heartbeat.
 
-### 2. Start the app
+## How the signal travels
 
-Double-click:
+1. An authorized operator uploads a short camera clip with a registration state, camera or truck ID, and tow destination.
+2. The Python worker claims the queued job and runs the supplied FastALPR pipeline with plate detection, OCR, relative-motion tracking, and multi-frame voting.
+3. The worker returns up to five candidates and supporting snapshots. Candidates are stored as private evidence with `pending` review status.
+4. A person checks the full plate, registration state, frame, and destination. Publication is an explicit action.
+5. The public lookup matches the exact normalized plate and state against published records only.
 
-```text
-start_towtrace.bat
-```
+OCR confidence describes the plate read. It is not the probability that a vehicle was towed. Ambiguous tracks are rejected rather than promoted by a stronger label.
 
-Or run:
+## Demo and data boundaries
 
-```powershell
-python start_towtrace.py
-```
+The sample experience uses the original `tow_test.mp4` project footage and its saved evidence. The sample plate (`9WKR761`, California) is marked as a historical demo and is never mixed into live lookup results.
 
-On the first launch, the launcher creates `.venv`, installs the dependencies, starts FastAPI, and opens the app in your browser.
+This is an independent prototype, not a municipal or tow-company registry. It does not establish that a vehicle is currently impounded, guarantee that every tow is represented, or replace posted-property instructions and local non-emergency services. Confirm pickup details with the operator that supplied the destination.
 
-Open manually at:
+Raw uploaded footage is deleted after successful processing. A deletion failure is recorded and retried on later worker heartbeats or claims. Review snapshots remain as evidence; queued and failed footage stays private for diagnosis. Upload only footage that you are authorized to process.
 
-```text
-http://127.0.0.1:8000
-```
+## Worker
 
-## Manual setup
+The browser and API are hosted, but computer-vision processing runs in a separate Python process. It makes outbound HTTPS requests to the Site; it does not need an inbound port, public IP, or tunnel.
 
-Python 3 is required.
+See [`worker/README.md`](worker/README.md) for Docker and Python instructions. The short version is:
 
-```bash
-python -m venv .venv
-```
+~~~sh
+cd worker
+docker build -t haveibeentowed-worker .
+~~~
 
-### Windows PowerShell
+Then open **Detection studio → Connect worker**, sign in as an approved operator, generate a connection key, and run the command shown there. Keys are shown once, expire after 90 days, and generating a new key revokes the previous one. A Site deployment does not start the worker automatically.
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-pip install -r backend\requirements.txt
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
-```
+The worker uses a 15-minute job lease and a 12-minute inference timeout. Interrupted jobs can be reclaimed; after three attempts a job is marked failed. Keep the worker host powered on while jobs are queued.
 
-### macOS / Linux
+## Configuration
 
-```bash
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
-```
+Locally these live in `.dev.vars` (see `.dev.vars.example`); in production they are Cloudflare Worker variables and secrets (see `DEPLOY.md`):
 
-Then visit `http://127.0.0.1:8000`.
+~~~sh
+OPERATOR_EMAILS=operator@example.com
+OPERATOR_PASSWORD=a-long-shared-password
+SESSION_SECRET=a-long-random-string
+LOOKUP_SALT=use-a-local-random-value
+~~~
 
-## Test the CV pipeline
+`OPERATOR_EMAILS` is a comma-separated allowlist and `OPERATOR_PASSWORD` is the shared operator password. Operators sign in at `/login`; a signed, HttpOnly session cookie (keyed by `SESSION_SECRET`) lasts seven days and is re-checked against the allowlist on every request. Sign-in is rate limited. The allowlist gates uploads, worker-key generation, and evidence review; it is not a general role system. Anonymous visitors can use the public lookup, subject to a per-IP rate limit when Cloudflare provides the request IP.
 
-First start the backend, then open a second terminal from the repository root.
+## Repository layout
 
-### Windows
+~~~text
+app/                 Vinext pages, API route, and client workspace
+lib/                 API handlers, validation, access checks, and types
+db/                  D1 access and schema declarations
+drizzle/             D1 migrations
+worker/              Python/FastALPR worker and Docker image
+public/media/        Clearly marked sample footage and evidence
+tests/               Node, D1/R2 integration, and Python worker tests
+wrangler.jsonc       Worker entry, D1/R2 bindings, and variables
+edge/                Cloudflare Worker entry point
+lib/auth.ts          Operator sign-in and signed session cookies
+~~~
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-python backend\cv\tow_cv_only.py demo\tow_test.mp4 --debug
-```
+## Validation
 
-Or double-click `test_cv.bat`.
+Run the focused checks before publishing a change:
 
-### macOS / Linux
+~~~sh
+pnpm build
+pnpm test
+python3 -m compileall -q worker
+~~~
 
-```bash
-source .venv/bin/activate
-python backend/cv/tow_cv_only.py demo/tow_test.mp4 --debug
-```
+The integration suite exercises the real D1/R2 emulation, including owner scoping, stale leases, idempotent completion, private evidence, exact plate-and-state lookup, and durable raw-footage cleanup:
 
-When the pipeline accepts a plate as the likely towed vehicle, it can POST the tow record to the running backend at `/tows`.
+~~~sh
+node tests/api.integration.mjs
+~~~
 
-## Web pages
+The thresholds, model configuration, and demo data are retained from the supplied project. They are engineering settings for this prototype, not validated towing, legal, or safety determinations.
 
-| Page | Route | Purpose |
-| --- | --- | --- |
-| Home | `/` | Search a license plate and view its latest tow record |
-| Detection | `/detection` | Upload a video and run the tow-detection pipeline |
-| Evaluation | `/evaluation` | Review accepted detections and snapshots |
-| Health | `/health` | Confirm that the backend is running |
+## Deployment
 
-## API endpoints
+The web application is a Vinext (Next-compatible) app that runs as a Cloudflare Worker with D1 and R2 bindings. `pnpm deploy` builds and publishes it to a free `*.workers.dev` address, and a custom domain can be attached in the Cloudflare dashboard. Step-by-step instructions are in [`DEPLOY.md`](DEPLOY.md). The Python worker remains a separately managed process and must be connected with its short-lived worker key after deployment.
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/health` | Backend health check |
-| `POST` | `/tows` | Create a tow record |
-| `GET` | `/tows` | Get the 50 most recent tow records |
-| `GET` | `/tows/{plate}` | Find the most recent tow for a plate |
-| `POST` | `/detections/analyze` | Upload and analyze a video |
-| `GET` | `/detections` | Get detection history |
-| `DELETE` | `/detections` | Clear detection history |
+## Project background
 
-## How the computer vision works
-
-The CV pipeline is intentionally more than a single OCR call:
-
-- detects candidate license plates with FastALPR;
-- filters detections by size/region when configured;
-- tracks plates across analyzed video frames;
-- estimates background motion using OpenCV optical flow;
-- compares plate motion with tow-truck/camera motion to find plates that remain rigid relative to the truck;
-- combines repeated OCR reads using voting instead of trusting one frame;
-- stores the strongest snapshot for an accepted plate.
-
-This makes the project closer to a **tow-event detection pipeline** than a basic license-plate reader.
-
-## Notes
-
-- Uploaded videos are kept only temporarily during browser-based analysis.
-- Accepted snapshots are saved under `data/snapshots/` and served by the backend.
-- The included SQLite database and sample detection are demo data and can be replaced with a fresh database for deployment.
-- The current demo analyzes uploads synchronously. A production deployment would normally move long-running CV work to a background worker/queue and use durable object storage for videos and snapshots.
-
-## Future improvements
-
-- SMS notification when a vehicle is detected as towed
-- authentication for tow operators
-- cloud object storage for footage and snapshots
-- asynchronous/background video processing
-- map integration for tow-yard destination and vehicle pickup
-- improved plate-region validation and model evaluation metrics
-- containerized deployment with Docker
-
-## Hackathon use
-
-For a demo, the simplest flow is:
-
-1. Run `start_towtrace.bat`.
-2. Open **Detection**.
-3. Upload `demo/tow_test.mp4`.
-4. Wait for analysis to finish.
-5. Open **Evaluation** to show the accepted snapshot.
-6. Search the accepted plate on **Home** to demonstrate the user lookup experience.
-
----
-
-Built as a computer-vision + full-stack prototype for detecting and surfacing tow events from video.
+Originally built as a team project for BAY HACKS, where it won the AI track. This fork is maintained by Adham Matar and contains the updated application and computer-vision worker. The original project history is preserved in Git.
