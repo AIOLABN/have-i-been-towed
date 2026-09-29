@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/AIOLABN/have-i-been-towed/actions/workflows/ci.yml/badge.svg)](https://github.com/AIOLABN/have-i-been-towed/actions/workflows/ci.yml)
 
-**BAY HACKS AI-track winning team project.** Originally built by the [Have I Been Towed team](https://github.com/Have-I-been-towed/have-i-been-towed). This fork is maintained by [Adham Matar](https://github.com/AIOLABN); the award belongs to the original team project.
+**BAY HACKS AI-track winning team project.** Originally built by the [Have I Been Towed team](https://github.com/Have-I-been-towed/have-i-been-towed). This fork is maintained by [Adham Mater](https://github.com/AIOLABN); the award belongs to the original team project.
 
 A computer-vision prototype that helps drivers find reviewed towing records using their license plate and registration state.
 
